@@ -17,13 +17,11 @@ export const getPurchaseOrders = async (): Promise<PurchaseOrder[]> => {
     return [];
   }
 
-  // Map Supabase data to PurchaseOrder type if necessary
-  // Assuming the Supabase table matches the PurchaseOrder type for now
-  // But we might need to parse JSON fields if they are stored as strings
+  // Map Supabase data to PurchaseOrder type
   return (data || []).map((po: any) => ({
     ...po,
     progress: typeof po.progress === 'string' ? JSON.parse(po.progress) : po.progress,
-    itemsList: typeof po.itemsList === 'string' ? JSON.parse(po.itemsList) : po.itemsList,
+    itemsList: po.items_list ? (typeof po.items_list === 'string' ? JSON.parse(po.items_list) : po.items_list) : [],
   }));
 };
 
@@ -33,9 +31,22 @@ export const createPurchaseOrder = async (po: PurchaseOrder): Promise<PurchaseOr
     return null;
   }
 
+  // Get current user
+  const { data: { user } } = await supabase.auth.getUser();
+
+  // Map frontend PurchaseOrder to backend structure
+  const dbPayload = {
+    ...po,
+    items_list: po.itemsList,
+    created_by: user?.id
+  };
+  // Remove the frontend-only property if it exists in the payload to avoid errors
+  // @ts-ignore
+  delete dbPayload.itemsList;
+
   const { data, error } = await supabase
     .from('purchase_orders')
-    .insert([po])
+    .insert([dbPayload])
     .select()
     .single();
 
@@ -47,7 +58,7 @@ export const createPurchaseOrder = async (po: PurchaseOrder): Promise<PurchaseOr
   return {
     ...data,
     progress: typeof data.progress === 'string' ? JSON.parse(data.progress) : data.progress,
-    itemsList: typeof data.itemsList === 'string' ? JSON.parse(data.itemsList) : data.itemsList,
+    itemsList: data.items_list ? (typeof data.items_list === 'string' ? JSON.parse(data.items_list) : data.items_list) : [],
   };
 };
 
@@ -57,9 +68,16 @@ export const updatePurchaseOrder = async (id: string, updates: Partial<PurchaseO
     return null;
   }
 
+  // Map frontend updates to backend structure
+  const dbUpdates: any = { ...updates };
+  if (updates.itemsList) {
+    dbUpdates.items_list = updates.itemsList;
+    delete dbUpdates.itemsList;
+  }
+
   const { data, error } = await supabase
     .from('purchase_orders')
-    .update(updates)
+    .update(dbUpdates)
     .eq('id', id)
     .select()
     .single();
@@ -72,7 +90,7 @@ export const updatePurchaseOrder = async (id: string, updates: Partial<PurchaseO
   return {
     ...data,
     progress: typeof data.progress === 'string' ? JSON.parse(data.progress) : data.progress,
-    itemsList: typeof data.itemsList === 'string' ? JSON.parse(data.itemsList) : data.itemsList,
+    itemsList: data.items_list ? (typeof data.items_list === 'string' ? JSON.parse(data.items_list) : data.items_list) : [],
   };
 };
 

@@ -138,8 +138,16 @@ export function PurchaseOrders({ pageAction, onActionHandled, userRole }: Purcha
     const totalAmount = selectedItems.reduce((sum, i) => sum + (i.item.price * i.quantity), 0);
     const totalItems = selectedItems.reduce((sum, i) => sum + i.quantity, 0);
 
+    // Generate ID based on max existing ID to avoid collisions
+    const maxId = pos.reduce((max, p) => {
+      const parts = p.id.split('-');
+      const num = parseInt(parts[2] || '0');
+      return !isNaN(num) && num > max ? num : max;
+    }, 0);
+    const nextId = maxId + 1;
+
     const newPO: PurchaseOrder = {
-      id: `PO-2024-${String(pos.length + 1).padStart(3, '0')}`,
+      id: `PO-2024-${String(nextId).padStart(3, '0')}`,
       vendor: formData.vendor || "New Vendor",
       date: formData.date || new Date().toISOString().split('T')[0],
       amount: `$${totalAmount.toFixed(2)}`,

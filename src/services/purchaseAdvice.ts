@@ -28,9 +28,17 @@ export const createPurchaseAdvice = async (pa: PurchaseAdvice): Promise<Purchase
     return null;
   }
 
+  // Get current user
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const payload = {
+    ...pa,
+    created_by: user?.id
+  };
+
   const { data, error } = await supabase
     .from('purchase_advice')
-    .insert([pa])
+    .insert([payload])
     .select()
     .single();
 

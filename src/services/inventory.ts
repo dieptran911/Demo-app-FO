@@ -9,6 +9,7 @@ export interface InventoryItem {
   min_stock: number;
   price: number;
   created_at?: string;
+  created_by?: string;
 }
 
 export const fetchInventoryItems = async () => {
@@ -36,9 +37,17 @@ export const addInventoryItem = async (item: Omit<InventoryItem, 'id' | 'created
     return null;
   }
 
+  // Get current user
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const payload = {
+    ...item,
+    created_by: user?.id
+  };
+
   const { data, error } = await supabase
     .from('inventory_items')
-    .insert([item])
+    .insert([payload])
     .select()
     .single();
 

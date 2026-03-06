@@ -18,6 +18,7 @@ export interface PurchaseOrder {
     price: string;
   }[];
   notes: string;
+  created_by?: string;
 }
 
 export interface PurchaseAdvice {
@@ -35,4 +36,5 @@ export interface PurchaseAdvice {
     status: string;
     date?: string;
   }[];
+  created_by?: string;
 }
