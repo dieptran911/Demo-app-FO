@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +14,8 @@ import {
   Save,
   ShoppingCart,
   Calendar as CalendarIcon,
-  Loader2
+  Loader2,
+  Trash2
 } from "lucide-react";
 import {
   Tooltip,
@@ -31,69 +32,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { supabase } from '@/lib/supabase';
 import { PurchaseOrder } from '@/types';
-
-// Mock Data
-const initialPOs: PurchaseOrder[] = [
-  { 
-    id: "PO-2024-001", 
-    vendor: "TechSupplies Inc", 
-    date: "2024-03-10", 
-    amount: "$5,400.00", 
-    status: "Completed",
-    items: 12,
-    progress: [
-      { id: '1', label: 'Created', status: 'completed', date: 'Mar 10' },
-      { id: '2', label: 'Approved', status: 'completed', date: 'Mar 11' },
-      { id: '3', label: 'Ordered', status: 'completed', date: 'Mar 12' },
-      { id: '4', label: 'Received', status: 'completed', date: 'Mar 15' },
-    ],
-    itemsList: [
-      { name: "Dell XPS 15", quantity: 2, price: "$2,000.00" },
-      { name: "Dell Monitor 27\"", quantity: 5, price: "$200.00" },
-      { name: "Wireless Keyboard", quantity: 5, price: "$80.00" }
-    ],
-    notes: "Delivered to Building B, Reception."
-  },
-  { 
-    id: "PO-2024-002", 
-    vendor: "OfficeDepot", 
-    date: "2024-03-12", 
-    amount: "$1,250.00", 
-    status: "Processing",
-    items: 5,
-    progress: [
-      { id: '1', label: 'Created', status: 'completed', date: 'Mar 12' },
-      { id: '2', label: 'Approved', status: 'completed', date: 'Mar 13' },
-      { id: '3', label: 'Ordered', status: 'current', date: 'Mar 14' },
-      { id: '4', label: 'Received', status: 'upcoming' },
-    ],
-    itemsList: [
-      { name: "Office Chair", quantity: 5, price: "$250.00" }
-    ],
-    notes: "Pending confirmation on delivery date."
-  },
-  { 
-    id: "PO-2024-003", 
-    vendor: "Global Logistics", 
-    date: "2024-03-14", 
-    amount: "$12,800.00", 
-    status: "Pending",
-    items: 45,
-    progress: [
-      { id: '1', label: 'Created', status: 'completed', date: 'Mar 14' },
-      { id: '2', label: 'Approved', status: 'current' },
-      { id: '3', label: 'Ordered', status: 'upcoming' },
-      { id: '4', label: 'Received', status: 'upcoming' },
-    ],
-    itemsList: [
-      { name: "Shipping Containers", quantity: 2, price: "$5,000.00" },
-      { name: "Packaging Material", quantity: 43, price: "$65.11" }
-    ],
-    notes: "Awaiting customs clearance documentation."
-  },
-];
+import { getPurchaseOrders, createPurchaseOrder, deletePurchaseOrder } from '@/services/purchaseOrders';
+import { fetchInventoryItems, InventoryItem } from '@/services/inventory';
 
 interface PurchaseOrdersProps {
   pageAction?: { type: string; payload?: any } | null;
@@ -101,48 +42,67 @@ interface PurchaseOrdersProps {
   userRole?: 'employee' | 'manager';
 }
 
+interface SelectedItem {
+  item: InventoryItem;
+  quantity: number;
+}
+
 export function PurchaseOrders({ pageAction, onActionHandled, userRole }: PurchaseOrdersProps) {
   const [selectedPO, setSelectedPO] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
-  const [pos, setPos] = useState<PurchaseOrder[]>(initialPOs);
-  const [loading, setLoading] = useState(false);
+  const [pos, setPos] = useState<PurchaseOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Inventory State for Creation
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [selectedItems, setSelectedItems] = useState<SelectedItem[]>([]);
+  const [isInventoryLoading, setIsInventoryLoading] = useState(false);
+
+  // Form State
+  const [formData, setFormData] = useState({
+    vendor: '',
+    date: '',
+    notes: ''
+  });
   
   // Filter States
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
 
-  useEffect(() => {
-    const fetchPOs = async () => {
-      if (!supabase) return;
-      
+  const fetchPOs = useCallback(async () => {
+    try {
       setLoading(true);
-      const { data, error } = await supabase
-        .from('purchase_orders')
-        .select('*');
-        
-      if (error) {
-        console.error('Error fetching purchase orders:', error);
-      } else if (data) {
-        // Map Supabase data to PurchaseOrder type
-        const mappedData = data.map((po: any) => ({
-          id: po.id,
-          vendor: po.vendor,
-          date: po.date,
-          amount: po.amount,
-          status: po.status,
-          items: po.items,
-          notes: po.notes,
-          progress: typeof po.progress === 'string' ? JSON.parse(po.progress) : po.progress,
-          itemsList: typeof po.items_list === 'string' ? JSON.parse(po.items_list) : (po.items_list || []),
-        }));
-        setPos(mappedData);
-      }
+      const data = await getPurchaseOrders();
+      setPos(data);
+    } catch (error) {
+      console.error("Failed to fetch purchase orders", error);
+    } finally {
       setLoading(false);
-    };
-
-    fetchPOs();
+    }
   }, []);
+
+  useEffect(() => {
+    fetchPOs();
+  }, [fetchPOs]);
+
+  useEffect(() => {
+    if (isCreating) {
+      const loadInventory = async () => {
+        setIsInventoryLoading(true);
+        try {
+          const items = await fetchInventoryItems();
+          setInventoryItems(items);
+        } catch (error) {
+          console.error("Failed to load inventory items", error);
+        } finally {
+          setIsInventoryLoading(false);
+        }
+      };
+      loadInventory();
+    }
+  }, [isCreating]);
 
   useEffect(() => {
     if (pageAction?.type === 'create') {
@@ -155,68 +115,79 @@ export function PurchaseOrders({ pageAction, onActionHandled, userRole }: Purcha
 
   const activePO = pos.find(p => p.id === selectedPO);
 
+  const handleAddItem = (item: InventoryItem) => {
+    if (selectedItems.some(i => i.item.id === item.id)) return;
+    setSelectedItems([...selectedItems, { item, quantity: 1 }]);
+  };
+
+  const handleRemoveItem = (itemId: string) => {
+    setSelectedItems(selectedItems.filter(i => i.item.id !== itemId));
+  };
+
+  const handleQuantityChange = (itemId: string, quantity: number) => {
+    if (quantity < 1) return;
+    setSelectedItems(selectedItems.map(i => 
+      i.item.id === itemId ? { ...i, quantity } : i
+    ));
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
+
+    const totalAmount = selectedItems.reduce((sum, i) => sum + (i.item.price * i.quantity), 0);
+    const totalItems = selectedItems.reduce((sum, i) => sum + i.quantity, 0);
+
     const newPO: PurchaseOrder = {
       id: `PO-2024-${String(pos.length + 1).padStart(3, '0')}`,
-      vendor: "New Vendor Inc",
-      date: new Date().toISOString().split('T')[0],
-      amount: "$0.00",
+      vendor: formData.vendor || "New Vendor",
+      date: formData.date || new Date().toISOString().split('T')[0],
+      amount: `$${totalAmount.toFixed(2)}`,
       status: "Pending",
-      items: 0,
+      items: totalItems,
       progress: [
         { id: '1', label: 'Created', status: 'current', date: 'Just now' },
         { id: '2', label: 'Approved', status: 'upcoming' },
         { id: '3', label: 'Ordered', status: 'upcoming' },
         { id: '4', label: 'Received', status: 'upcoming' },
       ],
-      itemsList: [],
-      notes: ""
+      itemsList: selectedItems.map(i => ({
+        name: i.item.name,
+        quantity: i.quantity,
+        price: `$${i.item.price.toFixed(2)}`
+      })),
+      notes: formData.notes
     };
 
-    if (supabase) {
-      const { data, error } = await supabase
-        .from('purchase_orders')
-        .insert([{
-          id: newPO.id,
-          vendor: newPO.vendor,
-          date: newPO.date,
-          amount: newPO.amount,
-          status: newPO.status,
-          items: newPO.items,
-          notes: newPO.notes,
-          progress: newPO.progress,
-          items_list: newPO.itemsList
-        }])
-        .select()
-        .single();
-        
-      if (error) {
-        console.error('Error creating purchase order:', error);
-        // Fallback to local state update if error occurs (optional)
-      } else if (data) {
-         const createdPO = {
-          id: data.id,
-          vendor: data.vendor,
-          date: data.date,
-          amount: data.amount,
-          status: data.status,
-          items: data.items,
-          notes: data.notes,
-          progress: typeof data.progress === 'string' ? JSON.parse(data.progress) : data.progress,
-          itemsList: typeof data.items_list === 'string' ? JSON.parse(data.items_list) : (data.items_list || []),
-        };
+    try {
+      const createdPO = await createPurchaseOrder(newPO);
+      if (createdPO) {
         setPos([createdPO, ...pos]);
         setIsCreating(false);
         setSelectedPO(createdPO.id);
-        return;
+        setFormData({ vendor: '', date: '', notes: '' });
+        setSelectedItems([]);
+      }
+    } catch (error) {
+      console.error("Failed to create purchase order", error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (window.confirm('Are you sure you want to delete this order?')) {
+      try {
+        const success = await deletePurchaseOrder(id);
+        if (success) {
+          setPos(pos.filter(p => p.id !== id));
+          if (selectedPO === id) setSelectedPO(null);
+        }
+      } catch (error) {
+        console.error("Failed to delete purchase order", error);
       }
     }
-
-    // Fallback for local state only
-    setPos([newPO, ...pos]);
-    setIsCreating(false);
-    setSelectedPO(newPO.id);
   };
 
   // Filter Logic
@@ -250,30 +221,133 @@ export function PurchaseOrders({ pageAction, onActionHandled, userRole }: Purcha
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700">Vendor</label>
-                  <input type="text" className="w-full p-2 border border-slate-200 rounded-md" placeholder="Select vendor" />
+                  <input 
+                    type="text" 
+                    className="w-full p-2 border border-slate-200 rounded-md" 
+                    placeholder="Select vendor" 
+                    value={formData.vendor}
+                    onChange={(e) => setFormData({...formData, vendor: e.target.value})}
+                    required
+                  />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700">Expected Date</label>
-                  <input type="date" className="w-full p-2 border border-slate-200 rounded-md" />
+                  <input 
+                    type="date" 
+                    className="w-full p-2 border border-slate-200 rounded-md" 
+                    value={formData.date}
+                    onChange={(e) => setFormData({...formData, date: e.target.value})}
+                    required
+                  />
                 </div>
               </div>
               
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700">Items</label>
-                <div className="border border-slate-200 rounded-md p-4 bg-slate-50 text-center text-slate-500 text-sm">
-                  No items added yet. Click to add items from inventory.
+                
+                {/* Selected Items List */}
+                {selectedItems.length > 0 && (
+                  <div className="border border-slate-200 rounded-md overflow-hidden mb-4">
+                    <table className="w-full text-sm">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-medium text-slate-500">Item</th>
+                          <th className="px-3 py-2 text-left font-medium text-slate-500 w-20">Qty</th>
+                          <th className="px-3 py-2 text-right font-medium text-slate-500">Price</th>
+                          <th className="px-3 py-2 w-10"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {selectedItems.map((item) => (
+                          <tr key={item.item.id}>
+                            <td className="px-3 py-2">{item.item.name}</td>
+                            <td className="px-3 py-2">
+                              <input 
+                                type="number" 
+                                min="1"
+                                className="w-16 p-1 border border-slate-200 rounded text-center"
+                                value={item.quantity}
+                                onChange={(e) => handleQuantityChange(item.item.id, parseInt(e.target.value) || 1)}
+                              />
+                            </td>
+                            <td className="px-3 py-2 text-right">${(item.item.price * item.quantity).toFixed(2)}</td>
+                            <td className="px-3 py-2 text-center">
+                              <button 
+                                type="button"
+                                onClick={() => handleRemoveItem(item.item.id)}
+                                className="text-slate-400 hover:text-red-500"
+                              >
+                                <X className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                        <tr className="bg-slate-50 font-medium">
+                          <td className="px-3 py-2 text-right" colSpan={2}>Total:</td>
+                          <td className="px-3 py-2 text-right">
+                            ${selectedItems.reduce((sum, i) => sum + (i.item.price * i.quantity), 0).toFixed(2)}
+                          </td>
+                          <td></td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Inventory Selection */}
+                <div className="border border-slate-200 rounded-md p-4 bg-slate-50">
+                  <p className="text-xs font-medium text-slate-500 mb-2 uppercase">Add Items from Inventory</p>
+                  {isInventoryLoading ? (
+                    <div className="flex justify-center py-4">
+                      <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+                    </div>
+                  ) : inventoryItems.length === 0 ? (
+                    <p className="text-sm text-slate-500 italic text-center py-2">No inventory items available.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
+                      {inventoryItems.map((item) => {
+                        const isSelected = selectedItems.some(i => i.item.id === item.id);
+                        return (
+                          <div 
+                            key={item.id} 
+                            className={`flex items-center justify-between p-2 rounded border ${isSelected ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-slate-200'}`}
+                          >
+                            <div className="truncate mr-2">
+                              <div className="text-sm font-medium truncate" title={item.name}>{item.name}</div>
+                              <div className="text-xs text-slate-500">${item.price.toFixed(2)}</div>
+                            </div>
+                            <Button 
+                              type="button" 
+                              size="sm" 
+                              variant={isSelected ? "secondary" : "outline"}
+                              className="h-7 text-xs"
+                              disabled={isSelected}
+                              onClick={() => handleAddItem(item)}
+                            >
+                              {isSelected ? 'Added' : 'Add'}
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
 
               <div className="space-y-2">
                 <label className="text-sm font-medium text-slate-700">Notes</label>
-                <textarea className="w-full p-2 border border-slate-200 rounded-md h-24" placeholder="Add notes..." />
+                <textarea 
+                  className="w-full p-2 border border-slate-200 rounded-md h-24" 
+                  placeholder="Add notes..." 
+                  value={formData.notes}
+                  onChange={(e) => setFormData({...formData, notes: e.target.value})}
+                />
               </div>
 
               <div className="pt-4 flex justify-end space-x-2">
                 <Button type="button" variant="outline" onClick={() => setIsCreating(false)}>Cancel</Button>
-                <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700">
-                  <Save className="w-4 h-4 mr-2" />
+                <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700" disabled={isSubmitting}>
+                  {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
                   Create Order
                 </Button>
               </div>
@@ -440,12 +514,22 @@ export function PurchaseOrders({ pageAction, onActionHandled, userRole }: Purcha
                         <p className="text-sm text-slate-500">{po.id} • {po.date}</p>
                       </div>
                     </div>
-                    <Badge variant={
-                      po.status === "Completed" ? "success" : 
-                      po.status === "Processing" ? "info" : "warning"
-                    }>
-                      {po.status}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge variant={
+                        po.status === "Completed" ? "success" : 
+                        po.status === "Processing" ? "info" : "warning"
+                      }>
+                        {po.status}
+                      </Badge>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50"
+                        onClick={(e) => handleDelete(e, po.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <div className="text-slate-500">

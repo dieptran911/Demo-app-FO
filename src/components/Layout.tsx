@@ -10,7 +10,8 @@ import {
   LogOut,
   Bell,
   User,
-  Shield
+  Shield,
+  MessageSquare
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from './ui/button';
@@ -39,6 +40,8 @@ export function Layout({ children, activePage, onNavigate, userRole, onRoleChang
     { id: 'po', label: 'Purchase Orders', icon: ShoppingCart },
     { id: 'pa', label: 'Purchase Advice', icon: FileText },
     { id: 'inventory', label: 'Inventory (In/Out)', icon: Package },
+    { id: 'messages', label: 'Messages', icon: MessageSquare },
+    { id: 'setup', label: 'Database Setup', icon: Settings },
   ];
 
   return (

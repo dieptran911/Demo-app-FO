@@ -8,7 +8,9 @@ import { Layout } from '@/components/Layout';
 import { Dashboard } from '@/pages/Dashboard';
 import { PurchaseOrders } from '@/pages/PurchaseOrders';
 import { PurchaseAdvice } from '@/pages/PurchaseAdvice';
+import { Messages } from '@/pages/Messages';
 import { Inventory } from '@/pages/Inventory';
+import { Setup } from '@/pages/Setup';
 
 export type UserRole = 'employee' | 'manager';
 
@@ -36,6 +38,10 @@ export default function App() {
         return <PurchaseAdvice userRole={userRole} />;
       case 'inventory':
         return <Inventory userRole={userRole} />;
+      case 'messages':
+        return <Messages />;
+      case 'setup':
+        return <Setup />;
       default:
         return <Dashboard onNavigate={handleNavigate} userRole={userRole} />;
     }

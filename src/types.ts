@@ -19,3 +19,20 @@ export interface PurchaseOrder {
   }[];
   notes: string;
 }
+
+export interface PurchaseAdvice {
+  id: string;
+  department: string;
+  requester: string;
+  date: string;
+  priority: string;
+  status: string;
+  description: string;
+  justification?: string;
+  progress: {
+    id: string;
+    label: string;
+    status: string;
+    date?: string;
+  }[];
+}

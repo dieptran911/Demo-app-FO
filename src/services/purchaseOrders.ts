@@ -50,3 +50,47 @@ export const createPurchaseOrder = async (po: PurchaseOrder): Promise<PurchaseOr
     itemsList: typeof data.itemsList === 'string' ? JSON.parse(data.itemsList) : data.itemsList,
   };
 };
+
+export const updatePurchaseOrder = async (id: string, updates: Partial<PurchaseOrder>): Promise<PurchaseOrder | null> => {
+  if (!supabase) {
+    console.warn('Supabase client is not initialized.');
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from('purchase_orders')
+    .update(updates)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error updating purchase order:', error);
+    return null;
+  }
+
+  return {
+    ...data,
+    progress: typeof data.progress === 'string' ? JSON.parse(data.progress) : data.progress,
+    itemsList: typeof data.itemsList === 'string' ? JSON.parse(data.itemsList) : data.itemsList,
+  };
+};
+
+export const deletePurchaseOrder = async (id: string): Promise<boolean> => {
+  if (!supabase) {
+    console.warn('Supabase client is not initialized.');
+    return false;
+  }
+
+  const { error } = await supabase
+    .from('purchase_orders')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    console.error('Error deleting purchase order:', error);
+    return false;
+  }
+
+  return true;
+};

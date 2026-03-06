@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,7 +11,9 @@ import {
   Package,
   X,
   Save,
-  Pencil
+  Pencil,
+  Trash2,
+  Loader2
 } from "lucide-react";
 import {
   Tooltip,
@@ -19,20 +21,20 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-
-// Mock Data
-const initialInventoryItems = [
-  { id: "INV-001", name: "Office Chair Ergonomic", sku: "FURN-001", stock: 45, minStock: 10, category: "Furniture", price: "120.00" },
-  { id: "INV-002", name: "Monitor 27-inch 4K", sku: "ELEC-002", stock: 8, minStock: 15, category: "Electronics", price: "350.00" },
-  { id: "INV-003", name: "Wireless Keyboard", sku: "ELEC-003", stock: 120, minStock: 20, category: "Electronics", price: "45.00" },
-  { id: "INV-004", name: "Standing Desk", sku: "FURN-004", stock: 12, minStock: 5, category: "Furniture", price: "450.00" },
-  { id: "INV-005", name: "USB-C Hub", sku: "ACC-005", stock: 200, minStock: 50, category: "Accessories", price: "25.00" },
-];
+import { 
+  fetchInventoryItems, 
+  addInventoryItem, 
+  updateInventoryItem, 
+  deleteInventoryItem,
+  InventoryItem 
+} from '../services/inventory';
 
 export function Inventory() {
-  const [items, setItems] = useState(initialInventoryItems);
+  const [items, setItems] = useState<InventoryItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<any>(null);
+  const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -43,6 +45,25 @@ export function Inventory() {
     minStock: 0,
     price: ''
   });
+
+  const loadItems = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await fetchInventoryItems();
+      // Map backend min_stock to frontend minStock if needed, but we can just use the backend type
+      // However, the UI expects minStock in some places if we kept the old structure.
+      // Let's just use the backend type directly in the state.
+      setItems(data || []);
+    } catch (error) {
+      console.error("Failed to load inventory items", error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadItems();
+  }, [loadItems]);
 
   const handleAddNew = () => {
     setEditingItem(null);
@@ -57,40 +78,63 @@ export function Inventory() {
     setIsFormOpen(true);
   };
 
-  const handleEdit = (item: any) => {
+  const handleEdit = (item: InventoryItem) => {
     setEditingItem(item);
     setFormData({
       name: item.name,
       sku: item.sku,
       category: item.category,
       stock: item.stock,
-      minStock: item.minStock,
-      price: item.price
+      minStock: item.min_stock,
+      price: item.price.toString()
     });
     setIsFormOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (editingItem) {
-      // Update existing
-      const updatedItems = items.map(item => 
-        item.id === editingItem.id 
-          ? { ...item, ...formData } 
-          : item
-      );
-      setItems(updatedItems);
-    } else {
-      // Create new
-      const newItem = {
-        id: `INV-${String(items.length + 1).padStart(3, '0')}`,
-        ...formData
-      };
-      setItems([newItem, ...items]);
+  const handleDelete = async (id: string) => {
+    if (window.confirm('Are you sure you want to delete this item?')) {
+      try {
+        await deleteInventoryItem(id);
+        setItems(items.filter(item => item.id !== id));
+      } catch (error) {
+        console.error("Failed to delete item", error);
+      }
     }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
     
-    setIsFormOpen(false);
+    try {
+      const itemData = {
+        name: formData.name,
+        sku: formData.sku,
+        category: formData.category,
+        stock: formData.stock,
+        min_stock: formData.minStock,
+        price: parseFloat(formData.price) || 0
+      };
+
+      if (editingItem) {
+        // Update existing
+        const updated = await updateInventoryItem(editingItem.id, itemData);
+        if (updated) {
+          setItems(items.map(item => item.id === editingItem.id ? updated : item));
+        }
+      } else {
+        // Create new
+        const newItem = await addInventoryItem(itemData);
+        if (newItem) {
+          setItems([newItem, ...items]);
+        }
+      }
+      setIsFormOpen(false);
+    } catch (error) {
+      console.error("Failed to save item", error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (isFormOpen) {
@@ -183,8 +227,8 @@ export function Inventory() {
 
               <div className="pt-4 flex justify-end space-x-2">
                 <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>Cancel</Button>
-                <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700">
-                  <Save className="w-4 h-4 mr-2" />
+                <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700" disabled={isSubmitting}>
+                  {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
                   {editingItem ? 'Update Item' : 'Save Item'}
                 </Button>
               </div>
@@ -305,52 +349,77 @@ export function Inventory() {
           </CardHeader>
           <CardContent>
             <div className="relative w-full overflow-auto">
-              <table className="w-full caption-bottom text-sm">
-                <thead className="[&_tr]:border-b">
-                  <tr className="border-b transition-colors hover:bg-slate-50/50 data-[state=selected]:bg-slate-50">
-                    <th className="h-12 px-4 text-left align-middle font-medium text-slate-500">Item Name</th>
-                    <th className="h-12 px-4 text-left align-middle font-medium text-slate-500">SKU</th>
-                    <th className="h-12 px-4 text-left align-middle font-medium text-slate-500">Category</th>
-                    <th className="h-12 px-4 text-left align-middle font-medium text-slate-500">Stock</th>
-                    <th className="h-12 px-4 text-left align-middle font-medium text-slate-500">Status</th>
-                    <th className="h-12 px-4 text-right align-middle font-medium text-slate-500">Price</th>
-                    <th className="h-12 px-4 text-right align-middle font-medium text-slate-500">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="[&_tr:last-child]:border-0">
-                  {items.map((item) => (
-                    <tr key={item.id} className="border-b transition-colors hover:bg-slate-50/50">
-                      <td className="p-4 align-middle font-medium">{item.name}</td>
-                      <td className="p-4 align-middle text-slate-500">{item.sku}</td>
-                      <td className="p-4 align-middle">
-                        <Badge variant="outline">{item.category}</Badge>
-                      </td>
-                      <td className="p-4 align-middle font-mono">{item.stock}</td>
-                      <td className="p-4 align-middle">
-                        {item.stock < item.minStock ? (
-                          <Badge variant="destructive">Low Stock</Badge>
-                        ) : (
-                          <Badge variant="success">In Stock</Badge>
-                        )}
-                      </td>
-                      <td className="p-4 align-middle text-right">${item.price}</td>
-                      <td className="p-4 align-middle text-right">
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button variant="ghost" size="sm" onClick={() => handleEdit(item)}>
-                              <Pencil className="w-4 h-4 mr-2" />
-                              Edit
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>Edit item details</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </td>
+              {loading ? (
+                <div className="flex justify-center items-center py-8">
+                  <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+                </div>
+              ) : (
+                <table className="w-full caption-bottom text-sm">
+                  <thead className="[&_tr]:border-b">
+                    <tr className="border-b transition-colors hover:bg-slate-50/50 data-[state=selected]:bg-slate-50">
+                      <th className="h-12 px-4 text-left align-middle font-medium text-slate-500">Item Name</th>
+                      <th className="h-12 px-4 text-left align-middle font-medium text-slate-500">SKU</th>
+                      <th className="h-12 px-4 text-left align-middle font-medium text-slate-500">Category</th>
+                      <th className="h-12 px-4 text-left align-middle font-medium text-slate-500">Stock</th>
+                      <th className="h-12 px-4 text-left align-middle font-medium text-slate-500">Status</th>
+                      <th className="h-12 px-4 text-right align-middle font-medium text-slate-500">Price</th>
+                      <th className="h-12 px-4 text-right align-middle font-medium text-slate-500">Actions</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="[&_tr:last-child]:border-0">
+                    {items.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="p-4 text-center text-slate-500">
+                          No items found. Add one to get started.
+                        </td>
+                      </tr>
+                    ) : (
+                      items.map((item) => (
+                        <tr key={item.id} className="border-b transition-colors hover:bg-slate-50/50">
+                          <td className="p-4 align-middle font-medium">{item.name}</td>
+                          <td className="p-4 align-middle text-slate-500">{item.sku}</td>
+                          <td className="p-4 align-middle">
+                            <Badge variant="outline">{item.category}</Badge>
+                          </td>
+                          <td className="p-4 align-middle font-mono">{item.stock}</td>
+                          <td className="p-4 align-middle">
+                            {item.stock < item.min_stock ? (
+                              <Badge variant="destructive">Low Stock</Badge>
+                            ) : (
+                              <Badge variant="success">In Stock</Badge>
+                            )}
+                          </td>
+                          <td className="p-4 align-middle text-right">${item.price}</td>
+                          <td className="p-4 align-middle text-right">
+                            <div className="flex justify-end space-x-2">
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button variant="ghost" size="sm" onClick={() => handleEdit(item)}>
+                                    <Pencil className="w-4 h-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Edit item details</p>
+                                </TooltipContent>
+                              </Tooltip>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={() => handleDelete(item.id)}>
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p>Delete item</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              )}
             </div>
           </CardContent>
         </Card>

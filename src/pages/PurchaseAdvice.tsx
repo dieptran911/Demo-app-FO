@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -11,7 +11,9 @@ import {
   CheckCircle,
   AlertCircle,
   X,
-  Save
+  Save,
+  Loader2,
+  Trash2
 } from "lucide-react";
 import {
   Tooltip,
@@ -19,40 +21,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-
-// Mock Data for PA
-const initialPAs = [
-  { 
-    id: "PA-2024-089", 
-    department: "IT Department", 
-    requester: "Alice Cooper",
-    date: "2024-03-15", 
-    priority: "High",
-    status: "Pending Approval",
-    description: "New workstations for design team",
-    progress: [
-      { id: '1', label: 'Submitted', status: 'completed', date: 'Mar 15' },
-      { id: '2', label: 'Manager Review', status: 'current', date: 'Mar 15' },
-      { id: '3', label: 'Finance Review', status: 'upcoming' },
-      { id: '4', label: 'Final Approval', status: 'upcoming' },
-    ]
-  },
-  { 
-    id: "PA-2024-088", 
-    department: "Marketing", 
-    requester: "Bob Smith",
-    date: "2024-03-14", 
-    priority: "Medium",
-    status: "Approved",
-    description: "Q2 Campaign Materials",
-    progress: [
-      { id: '1', label: 'Submitted', status: 'completed', date: 'Mar 14' },
-      { id: '2', label: 'Manager Review', status: 'completed', date: 'Mar 14' },
-      { id: '3', label: 'Finance Review', status: 'completed', date: 'Mar 15' },
-      { id: '4', label: 'Final Approval', status: 'completed', date: 'Mar 15' },
-    ]
-  },
-];
+import { PurchaseAdvice } from '@/types';
+import { 
+  getPurchaseAdvice, 
+  createPurchaseAdvice, 
+  deletePurchaseAdvice 
+} from '@/services/purchaseAdvice';
 
 interface PurchaseAdviceProps {
   userRole?: 'employee' | 'manager';
@@ -61,20 +35,49 @@ interface PurchaseAdviceProps {
 export function PurchaseAdvice({ userRole }: PurchaseAdviceProps) {
   const [selectedPA, setSelectedPA] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
-  const [pas, setPas] = useState(initialPAs);
+  const [pas, setPas] = useState<PurchaseAdvice[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Form State
+  const [formData, setFormData] = useState({
+    department: 'IT Department',
+    priority: 'Medium',
+    description: '',
+    justification: ''
+  });
+
+  const fetchPAs = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await getPurchaseAdvice();
+      setPas(data);
+    } catch (error) {
+      console.error("Failed to fetch purchase advice", error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchPAs();
+  }, [fetchPAs]);
 
   const activePA = pas.find(p => p.id === selectedPA);
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newPA = {
-      id: `PA-2024-${String(pas.length + 89).padStart(3, '0')}`,
-      department: "General",
-      requester: "Current User",
+    setIsSubmitting(true);
+
+    const newPA: PurchaseAdvice = {
+      id: `PA-2024-${String(pas.length + 1).padStart(3, '0')}`,
+      department: formData.department,
+      requester: "Current User", // In a real app, get from auth context
       date: new Date().toISOString().split('T')[0],
-      priority: "Medium",
+      priority: formData.priority,
       status: "Pending Approval",
-      description: "New Request",
+      description: formData.description,
+      justification: formData.justification,
       progress: [
         { id: '1', label: 'Submitted', status: 'current', date: 'Just now' },
         { id: '2', label: 'Manager Review', status: 'upcoming' },
@@ -82,10 +85,41 @@ export function PurchaseAdvice({ userRole }: PurchaseAdviceProps) {
         { id: '4', label: 'Final Approval', status: 'upcoming' },
       ]
     };
-    // @ts-ignore
-    setPas([newPA, ...pas]);
-    setIsCreating(false);
-    setSelectedPA(newPA.id);
+
+    try {
+      const createdPA = await createPurchaseAdvice(newPA);
+      if (createdPA) {
+        setPas([createdPA, ...pas]);
+        setIsCreating(false);
+        setSelectedPA(createdPA.id);
+        // Reset form
+        setFormData({
+          department: 'IT Department',
+          priority: 'Medium',
+          description: '',
+          justification: ''
+        });
+      }
+    } catch (error) {
+      console.error("Failed to create purchase advice", error);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation(); // Prevent card click
+    if (window.confirm('Are you sure you want to delete this request?')) {
+      try {
+        const success = await deletePurchaseAdvice(id);
+        if (success) {
+          setPas(pas.filter(p => p.id !== id));
+          if (selectedPA === id) setSelectedPA(null);
+        }
+      } catch (error) {
+        console.error("Failed to delete purchase advice", error);
+      }
+    }
   };
 
   if (isCreating) {
@@ -112,7 +146,11 @@ export function PurchaseAdvice({ userRole }: PurchaseAdviceProps) {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-700">Department</label>
-                    <select className="w-full p-2 border border-slate-200 rounded-md bg-white">
+                    <select 
+                      className="w-full p-2 border border-slate-200 rounded-md bg-white"
+                      value={formData.department}
+                      onChange={(e) => setFormData({...formData, department: e.target.value})}
+                    >
                       <option>IT Department</option>
                       <option>Marketing</option>
                       <option>Operations</option>
@@ -121,7 +159,11 @@ export function PurchaseAdvice({ userRole }: PurchaseAdviceProps) {
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-slate-700">Priority</label>
-                    <select className="w-full p-2 border border-slate-200 rounded-md bg-white">
+                    <select 
+                      className="w-full p-2 border border-slate-200 rounded-md bg-white"
+                      value={formData.priority}
+                      onChange={(e) => setFormData({...formData, priority: e.target.value})}
+                    >
                       <option>Low</option>
                       <option>Medium</option>
                       <option>High</option>
@@ -132,20 +174,32 @@ export function PurchaseAdvice({ userRole }: PurchaseAdviceProps) {
                 
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700">Description</label>
-                  <input type="text" className="w-full p-2 border border-slate-200 rounded-md" placeholder="Brief description of request" />
+                  <input 
+                    type="text" 
+                    required
+                    className="w-full p-2 border border-slate-200 rounded-md" 
+                    placeholder="Brief description of request" 
+                    value={formData.description}
+                    onChange={(e) => setFormData({...formData, description: e.target.value})}
+                  />
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-slate-700">Justification</label>
-                  <textarea className="w-full p-2 border border-slate-200 rounded-md h-24" placeholder="Why is this needed?" />
+                  <textarea 
+                    className="w-full p-2 border border-slate-200 rounded-md h-24" 
+                    placeholder="Why is this needed?" 
+                    value={formData.justification}
+                    onChange={(e) => setFormData({...formData, justification: e.target.value})}
+                  />
                 </div>
 
                 <div className="pt-4 flex justify-end space-x-2">
                   <Button type="button" variant="outline" onClick={() => setIsCreating(false)}>Cancel</Button>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700">
-                        <Save className="w-4 h-4 mr-2" />
+                      <Button type="submit" className="bg-indigo-600 hover:bg-indigo-700" disabled={isSubmitting}>
+                        {isSubmitting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
                         Submit Request
                       </Button>
                     </TooltipTrigger>
@@ -207,47 +261,67 @@ export function PurchaseAdvice({ userRole }: PurchaseAdviceProps) {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* List */}
           <div className="lg:col-span-2 space-y-4">
-            {pas.map((pa) => (
-              <Card 
-                key={pa.id} 
-                className={`cursor-pointer transition-all hover:shadow-md ${selectedPA === pa.id ? 'ring-2 ring-indigo-600' : ''}`}
-                onClick={() => setSelectedPA(pa.id)}
-              >
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center space-x-3">
-                      <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center">
-                        <FileText className="h-5 w-5 text-slate-600" />
+            {loading ? (
+              <div className="flex justify-center items-center py-10">
+                <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+              </div>
+            ) : pas.length === 0 ? (
+              <div className="text-center py-10 text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+                No purchase advice requests found.
+              </div>
+            ) : (
+              pas.map((pa) => (
+                <Card 
+                  key={pa.id} 
+                  className={`cursor-pointer transition-all hover:shadow-md ${selectedPA === pa.id ? 'ring-2 ring-indigo-600' : ''}`}
+                  onClick={() => setSelectedPA(pa.id)}
+                >
+                  <CardContent className="p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center space-x-3">
+                        <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center">
+                          <FileText className="h-5 w-5 text-slate-600" />
+                        </div>
+                        <div>
+                          <h3 className="font-semibold text-slate-900">{pa.description}</h3>
+                          <p className="text-sm text-slate-500">{pa.id} • {pa.department}</p>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="font-semibold text-slate-900">{pa.description}</h3>
-                        <p className="text-sm text-slate-500">{pa.id} • {pa.department}</p>
+                      <div className="flex items-center gap-2">
+                        <Badge variant={
+                          pa.status === "Approved" ? "success" : 
+                          pa.status === "Rejected" ? "destructive" : "warning"
+                        }>
+                          {pa.status}
+                        </Badge>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50"
+                          onClick={(e) => handleDelete(e, pa.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
-                    <Badge variant={
-                      pa.status === "Approved" ? "success" : 
-                      pa.status === "Rejected" ? "destructive" : "warning"
-                    }>
-                      {pa.status}
-                    </Badge>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <div className="flex items-center text-slate-500">
-                      <span className="mr-2">Requester:</span>
-                      <div className="h-6 w-6 rounded-full bg-slate-200 flex items-center justify-center text-xs font-medium text-slate-600 mr-2">
-                        {pa.requester.charAt(0)}
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="flex items-center text-slate-500">
+                        <span className="mr-2">Requester:</span>
+                        <div className="h-6 w-6 rounded-full bg-slate-200 flex items-center justify-center text-xs font-medium text-slate-600 mr-2">
+                          {pa.requester.charAt(0)}
+                        </div>
+                        <span className="font-medium text-slate-900">{pa.requester}</span>
                       </div>
-                      <span className="font-medium text-slate-900">{pa.requester}</span>
+                      <Badge variant="outline" className={
+                        pa.priority === "High" ? "text-red-600 border-red-200 bg-red-50" : "text-slate-600"
+                      }>
+                        {pa.priority} Priority
+                      </Badge>
                     </div>
-                    <Badge variant="outline" className={
-                      pa.priority === "High" ? "text-red-600 border-red-200 bg-red-50" : "text-slate-600"
-                    }>
-                      {pa.priority} Priority
-                    </Badge>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                  </CardContent>
+                </Card>
+              ))
+            )}
           </div>
 
           {/* Detail View */}
