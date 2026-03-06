@@ -13,7 +13,8 @@ import {
   X,
   Save,
   ShoppingCart,
-  Calendar as CalendarIcon
+  Calendar as CalendarIcon,
+  Loader2
 } from "lucide-react";
 import {
   Tooltip,
@@ -30,9 +31,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { supabase } from '@/lib/supabase';
+import { PurchaseOrder } from '@/types';
 
 // Mock Data
-const initialPOs = [
+const initialPOs: PurchaseOrder[] = [
   { 
     id: "PO-2024-001", 
     vendor: "TechSupplies Inc", 
@@ -101,12 +104,45 @@ interface PurchaseOrdersProps {
 export function PurchaseOrders({ pageAction, onActionHandled, userRole }: PurchaseOrdersProps) {
   const [selectedPO, setSelectedPO] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
-  const [pos, setPos] = useState(initialPOs);
+  const [pos, setPos] = useState<PurchaseOrder[]>(initialPOs);
+  const [loading, setLoading] = useState(false);
   
   // Filter States
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
+
+  useEffect(() => {
+    const fetchPOs = async () => {
+      if (!supabase) return;
+      
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('purchase_orders')
+        .select('*');
+        
+      if (error) {
+        console.error('Error fetching purchase orders:', error);
+      } else if (data) {
+        // Map Supabase data to PurchaseOrder type
+        const mappedData = data.map((po: any) => ({
+          id: po.id,
+          vendor: po.vendor,
+          date: po.date,
+          amount: po.amount,
+          status: po.status,
+          items: po.items,
+          notes: po.notes,
+          progress: typeof po.progress === 'string' ? JSON.parse(po.progress) : po.progress,
+          itemsList: typeof po.items_list === 'string' ? JSON.parse(po.items_list) : (po.items_list || []),
+        }));
+        setPos(mappedData);
+      }
+      setLoading(false);
+    };
+
+    fetchPOs();
+  }, []);
 
   useEffect(() => {
     if (pageAction?.type === 'create') {
@@ -119,9 +155,9 @@ export function PurchaseOrders({ pageAction, onActionHandled, userRole }: Purcha
 
   const activePO = pos.find(p => p.id === selectedPO);
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newPO = {
+    const newPO: PurchaseOrder = {
       id: `PO-2024-${String(pos.length + 1).padStart(3, '0')}`,
       vendor: "New Vendor Inc",
       date: new Date().toISOString().split('T')[0],
@@ -137,7 +173,47 @@ export function PurchaseOrders({ pageAction, onActionHandled, userRole }: Purcha
       itemsList: [],
       notes: ""
     };
-    // @ts-ignore
+
+    if (supabase) {
+      const { data, error } = await supabase
+        .from('purchase_orders')
+        .insert([{
+          id: newPO.id,
+          vendor: newPO.vendor,
+          date: newPO.date,
+          amount: newPO.amount,
+          status: newPO.status,
+          items: newPO.items,
+          notes: newPO.notes,
+          progress: newPO.progress,
+          items_list: newPO.itemsList
+        }])
+        .select()
+        .single();
+        
+      if (error) {
+        console.error('Error creating purchase order:', error);
+        // Fallback to local state update if error occurs (optional)
+      } else if (data) {
+         const createdPO = {
+          id: data.id,
+          vendor: data.vendor,
+          date: data.date,
+          amount: data.amount,
+          status: data.status,
+          items: data.items,
+          notes: data.notes,
+          progress: typeof data.progress === 'string' ? JSON.parse(data.progress) : data.progress,
+          itemsList: typeof data.items_list === 'string' ? JSON.parse(data.items_list) : (data.items_list || []),
+        };
+        setPos([createdPO, ...pos]);
+        setIsCreating(false);
+        setSelectedPO(createdPO.id);
+        return;
+      }
+    }
+
+    // Fallback for local state only
     setPos([newPO, ...pos]);
     setIsCreating(false);
     setSelectedPO(newPO.id);
@@ -338,7 +414,11 @@ export function PurchaseOrders({ pageAction, onActionHandled, userRole }: Purcha
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* List */}
         <div className="lg:col-span-2 space-y-4">
-          {filteredPOs.length === 0 ? (
+          {loading ? (
+            <div className="flex justify-center items-center py-10">
+              <Loader2 className="h-8 w-8 animate-spin text-indigo-600" />
+            </div>
+          ) : filteredPOs.length === 0 ? (
             <div className="text-center py-10 text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200">
               No orders found matching your filters.
             </div>
