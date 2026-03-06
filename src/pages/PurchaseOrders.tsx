@@ -12,7 +12,8 @@ import {
   Download,
   X,
   Save,
-  ShoppingCart
+  ShoppingCart,
+  Calendar as CalendarIcon
 } from "lucide-react";
 import {
   Tooltip,
@@ -20,6 +21,15 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 // Mock Data
 const initialPOs = [
@@ -92,6 +102,11 @@ export function PurchaseOrders({ pageAction, onActionHandled, userRole }: Purcha
   const [selectedPO, setSelectedPO] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [pos, setPos] = useState(initialPOs);
+  
+  // Filter States
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [dateRange, setDateRange] = useState<{ start: string; end: string }>({ start: '', end: '' });
 
   useEffect(() => {
     if (pageAction?.type === 'create') {
@@ -127,6 +142,21 @@ export function PurchaseOrders({ pageAction, onActionHandled, userRole }: Purcha
     setIsCreating(false);
     setSelectedPO(newPO.id);
   };
+
+  // Filter Logic
+  const filteredPOs = pos.filter(po => {
+    const matchesSearch = 
+      po.vendor.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      po.id.toLowerCase().includes(searchQuery.toLowerCase());
+    
+    const matchesStatus = statusFilter.length === 0 || statusFilter.includes(po.status);
+    
+    const matchesDate = 
+      (!dateRange.start || po.date >= dateRange.start) &&
+      (!dateRange.end || po.date <= dateRange.end);
+      
+    return matchesSearch && matchesStatus && matchesDate;
+  });
 
   if (isCreating) {
     return (
@@ -197,65 +227,156 @@ export function PurchaseOrders({ pageAction, onActionHandled, userRole }: Purcha
         </div>
 
         {/* Filters */}
-        <div className="flex items-center space-x-2 bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
-          <div className="relative flex-1">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
+          <div className="relative flex-1 w-full">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-500" />
             <input 
               type="text" 
               placeholder="Search POs..." 
               className="w-full pl-9 pr-4 py-2 text-sm border-none focus:ring-0 focus:outline-none"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <div className="h-6 w-px bg-slate-200" />
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="sm" className="text-slate-500">
-                <Filter className="w-4 h-4 mr-2" />
-                Filter
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Filter orders by status or date</p>
-            </TooltipContent>
-          </Tooltip>
+          <div className="h-6 w-px bg-slate-200 hidden sm:block" />
+          
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            {/* Status Filter */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 border-dashed text-slate-500 hover:text-slate-900">
+                  <Filter className="w-4 h-4 mr-2" />
+                  Status
+                  {statusFilter.length > 0 && (
+                    <Badge variant="secondary" className="ml-2 rounded-sm px-1 font-normal text-xs">
+                      {statusFilter.length}
+                    </Badge>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-[200px]">
+                <DropdownMenuLabel>Filter by status</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                {['Pending', 'Processing', 'Completed'].map((status) => (
+                  <DropdownMenuCheckboxItem
+                    key={status}
+                    checked={statusFilter.includes(status)}
+                    onCheckedChange={(checked) => {
+                      if (checked) {
+                        setStatusFilter([...statusFilter, status]);
+                      } else {
+                        setStatusFilter(statusFilter.filter((s) => s !== status));
+                      }
+                    }}
+                  >
+                    {status}
+                  </DropdownMenuCheckboxItem>
+                ))}
+                {statusFilter.length > 0 && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onSelect={() => setStatusFilter([])}
+                      className="justify-center text-center"
+                    >
+                      Clear filters
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* Date Range Filter */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="h-8 border-dashed text-slate-500 hover:text-slate-900">
+                  <CalendarIcon className="w-4 h-4 mr-2" />
+                  Date
+                  {(dateRange.start || dateRange.end) && (
+                    <Badge variant="secondary" className="ml-2 rounded-sm px-1 font-normal text-xs">
+                      •
+                    </Badge>
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent className="w-auto p-4" align="end">
+                <div className="flex flex-col space-y-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium">Start Date</label>
+                    <input
+                      type="date"
+                      className="w-full border rounded p-1 text-sm"
+                      value={dateRange.start}
+                      onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-medium">End Date</label>
+                    <input
+                      type="date"
+                      className="w-full border rounded p-1 text-sm"
+                      value={dateRange.end}
+                      onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+                    />
+                  </div>
+                  {(dateRange.start || dateRange.end) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full h-8 mt-2"
+                      onClick={() => setDateRange({ start: '', end: '' })}
+                    >
+                      Clear Dates
+                    </Button>
+                  )}
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* List */}
         <div className="lg:col-span-2 space-y-4">
-          {pos.map((po) => (
-            <Card 
-              key={po.id} 
-              className={`cursor-pointer transition-all hover:shadow-md ${selectedPO === po.id ? 'ring-2 ring-indigo-600' : ''}`}
-              onClick={() => setSelectedPO(po.id)}
-            >
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center">
-                      <ShoppingCart className="h-5 w-5 text-slate-600" />
+          {filteredPOs.length === 0 ? (
+            <div className="text-center py-10 text-slate-500 bg-slate-50 rounded-lg border border-dashed border-slate-200">
+              No orders found matching your filters.
+            </div>
+          ) : (
+            filteredPOs.map((po) => (
+              <Card 
+                key={po.id} 
+                className={`cursor-pointer transition-all hover:shadow-md ${selectedPO === po.id ? 'ring-2 ring-indigo-600' : ''}`}
+                onClick={() => setSelectedPO(po.id)}
+              >
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center space-x-3">
+                      <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center">
+                        <ShoppingCart className="h-5 w-5 text-slate-600" />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-slate-900">{po.vendor}</h3>
+                        <p className="text-sm text-slate-500">{po.id} • {po.date}</p>
+                      </div>
                     </div>
-                    <div>
-                      <h3 className="font-semibold text-slate-900">{po.vendor}</h3>
-                      <p className="text-sm text-slate-500">{po.id} • {po.date}</p>
+                    <Badge variant={
+                      po.status === "Completed" ? "success" : 
+                      po.status === "Processing" ? "info" : "warning"
+                    }>
+                      {po.status}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="text-slate-500">
+                      <span className="font-medium text-slate-900">{po.items}</span> items
                     </div>
+                    <div className="font-bold text-slate-900">{po.amount}</div>
                   </div>
-                  <Badge variant={
-                    po.status === "Completed" ? "success" : 
-                    po.status === "Processing" ? "info" : "warning"
-                  }>
-                    {po.status}
-                  </Badge>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <div className="text-slate-500">
-                    <span className="font-medium text-slate-900">{po.items}</span> items
-                  </div>
-                  <div className="font-bold text-slate-900">{po.amount}</div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            ))
+          )}
         </div>
 
         {/* Detail View */}
