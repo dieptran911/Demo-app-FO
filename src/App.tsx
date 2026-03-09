@@ -15,7 +15,7 @@ import { Setup } from '@/pages/Setup';
 export type UserRole = 'employee' | 'manager';
 
 export default function App() {
-  const [activePage, setActivePage] = useState('dashboard');
+  const [activePage, setActivePage] = useState('pa');
   const [userRole, setUserRole] = useState<UserRole>('employee');
   const [pageAction, setPageAction] = useState<{ type: string; payload?: any } | null>(null);
 

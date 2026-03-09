@@ -44,7 +44,7 @@ interface PurchaseOrdersProps {
 
 interface SelectedItem {
   item: InventoryItem;
-  quantity: number;
+  quantity: number | string;
 }
 
 export function PurchaseOrders({ pageAction, onActionHandled, userRole }: PurchaseOrdersProps) {
@@ -124,19 +124,38 @@ export function PurchaseOrders({ pageAction, onActionHandled, userRole }: Purcha
     setSelectedItems(selectedItems.filter(i => i.item.id !== itemId));
   };
 
-  const handleQuantityChange = (itemId: string, quantity: number) => {
-    if (quantity < 1) return;
-    setSelectedItems(selectedItems.map(i => 
-      i.item.id === itemId ? { ...i, quantity } : i
-    ));
+  const handleQuantityChange = (itemId: string, value: string) => {
+    if (value === '') {
+      setSelectedItems(selectedItems.map(i => 
+        i.item.id === itemId ? { ...i, quantity: '' } : i
+      ));
+      return;
+    }
+    
+    const quantity = parseInt(value, 10);
+    if (!isNaN(quantity) && quantity >= 0) {
+      setSelectedItems(selectedItems.map(i => 
+        i.item.id === itemId ? { ...i, quantity } : i
+      ));
+    }
+  };
+
+  const handleQuantityBlur = (itemId: string) => {
+    setSelectedItems(selectedItems.map(i => {
+      if (i.item.id === itemId) {
+        const q = Number(i.quantity);
+        return { ...i, quantity: isNaN(q) || q < 1 ? 1 : q };
+      }
+      return i;
+    }));
   };
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
-    const totalAmount = selectedItems.reduce((sum, i) => sum + (i.item.price * i.quantity), 0);
-    const totalItems = selectedItems.reduce((sum, i) => sum + i.quantity, 0);
+    const totalAmount = selectedItems.reduce((sum, i) => sum + (i.item.price * (Number(i.quantity) || 0)), 0);
+    const totalItems = selectedItems.reduce((sum, i) => sum + (Number(i.quantity) || 0), 0);
 
     // Generate ID based on max existing ID to avoid collisions
     const maxId = pos.reduce((max, p) => {
@@ -161,7 +180,7 @@ export function PurchaseOrders({ pageAction, onActionHandled, userRole }: Purcha
       ],
       itemsList: selectedItems.map(i => ({
         name: i.item.name,
-        quantity: i.quantity,
+        quantity: Math.max(1, Number(i.quantity) || 1),
         price: `$${i.item.price.toFixed(2)}`
       })),
       notes: formData.notes
@@ -273,12 +292,14 @@ export function PurchaseOrders({ pageAction, onActionHandled, userRole }: Purcha
                               <input 
                                 type="number" 
                                 min="1"
+                                step="1"
                                 className="w-16 p-1 border border-slate-200 rounded text-center"
                                 value={item.quantity}
-                                onChange={(e) => handleQuantityChange(item.item.id, parseInt(e.target.value) || 1)}
+                                onChange={(e) => handleQuantityChange(item.item.id, e.target.value)}
+                                onBlur={() => handleQuantityBlur(item.item.id)}
                               />
                             </td>
-                            <td className="px-3 py-2 text-right">${(item.item.price * item.quantity).toFixed(2)}</td>
+                            <td className="px-3 py-2 text-right">${(item.item.price * (Number(item.quantity) || 0)).toFixed(2)}</td>
                             <td className="px-3 py-2 text-center">
                               <button 
                                 type="button"
@@ -293,7 +314,7 @@ export function PurchaseOrders({ pageAction, onActionHandled, userRole }: Purcha
                         <tr className="bg-slate-50 font-medium">
                           <td className="px-3 py-2 text-right" colSpan={2}>Total:</td>
                           <td className="px-3 py-2 text-right">
-                            ${selectedItems.reduce((sum, i) => sum + (i.item.price * i.quantity), 0).toFixed(2)}
+                            ${selectedItems.reduce((sum, i) => sum + (i.item.price * (Number(i.quantity) || 0)), 0).toFixed(2)}
                           </td>
                           <td></td>
                         </tr>

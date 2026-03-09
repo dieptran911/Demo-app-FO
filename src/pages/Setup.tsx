@@ -31,6 +31,10 @@ export function Setup() {
     const newStatus = { ...status };
 
     try {
+      if (!supabase) {
+        throw new Error("Supabase client is not initialized. Please check your environment variables (VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY).");
+      }
+
       // Test basic connection first
       const { error: connError } = await supabase.from('inventory_items').select('count', { count: 'exact', head: true });
       
@@ -71,6 +75,10 @@ export function Setup() {
     setSeeding(true);
     setError(null);
     try {
+      if (!supabase) {
+        throw new Error("Supabase client is not initialized. Please check your environment variables.");
+      }
+
       // Seed Inventory
       const { error: invError } = await supabase.from('inventory_items').insert([
         { id: 'INV-001', name: 'Ergonomic Office Chair', sku: 'FUR-CHR-001', category: 'Furniture', stock: 15, min_stock: 5, price: 299.99 },
